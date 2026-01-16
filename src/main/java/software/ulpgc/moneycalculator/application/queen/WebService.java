@@ -10,6 +10,7 @@ import software.ulpgc.moneycalculator.architecture.model.ExchangeRate;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.time.LocalDate;
@@ -72,7 +73,7 @@ public class WebService {
         }
 
         private static URLConnection createConnection() throws IOException {
-            URL url = new URL((ApiUrl + "codes"));
+            URL url = URI.create(ApiUrl + "codes").toURL();
             return url.openConnection();
         }
     }
@@ -85,7 +86,7 @@ public class WebService {
                     LocalDate.now(),
                     from,
                     to,
-                    readConversionRate(new URL(ApiUrl + "pair/" + from.code() + "/" + to.code()))
+                    readConversionRate(URI.create(ApiUrl + "pair/" + from.code() + "/" + to.code()).toURL())
                 );
             } catch (IOException e) {
                 throw new RuntimeException(e);
