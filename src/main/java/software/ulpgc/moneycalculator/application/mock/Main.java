@@ -33,6 +33,6 @@ public class Main {
     }
 
     private static MoneyDialog moneyDialog(List<Currency> currencies) {
-        return () -> new Money(100, currencies.get(0));
+        return () -> new Money(100, currencies.getFirst());
     }
 }

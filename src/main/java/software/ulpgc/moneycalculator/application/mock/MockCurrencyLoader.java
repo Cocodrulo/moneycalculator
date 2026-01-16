@@ -9,8 +9,8 @@ public class MockCurrencyLoader implements CurrencyLoader {
     @Override
     public List<Currency> loadAll() {
         return List.of(
-                new Currency("USD", "USA"),
-                new Currency("EUR", "Europa")
+                new Currency("USD", "USA", "https://www.exchangerate-api.com/img/docs/USA.gif"),
+                new Currency("EUR", "Europa", "https://www.exchangerate-api.com/img/docs/EUR.gif")
         );
     }
 }

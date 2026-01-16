@@ -4,7 +4,7 @@ import software.ulpgc.moneycalculator.architecture.control.ExchangeMoneyCommand;
 
 public class Main {
     public static void main(String[] args) {
-        Desktop desktop = new Desktop(new WebService.CurrencyLoader().loadAll());
+        software.ulpgc.moneycalculator.application.queen.Desktop desktop = new Desktop(new WebService.CurrencyLoader().loadAll());
         desktop.addCommand("exchange", new ExchangeMoneyCommand(
                 desktop.moneyDialog(),
                 desktop.currencyDialog(),

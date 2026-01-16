@@ -20,6 +20,7 @@ import java.util.List;
 public class WebService {
     private static final String ApiKey = "aeb1cd5ef6081142040d717f";
     private static final String ApiUrl = "https://v6.exchangerate-api.com/v6/API-KEY/".replace("API-KEY", ApiKey);
+    private static final String FlagsUrl = "https://flagcdn.com/w40/";
 
     public static class CurrencyLoader implements software.ulpgc.moneycalculator.architecture.io.CurrencyLoader {
 
@@ -38,26 +39,32 @@ public class WebService {
             }
         }
 
-        private List<Currency> readCurrenciesWith(String json) {
+        private List<Currency> readCurrenciesWith(String json) throws IOException {
             return readCurrenciesWith(jsonObjectIn(json));
         }
 
-        private List<Currency> readCurrenciesWith(JsonObject jsonObject) {
+        private List<Currency> readCurrenciesWith(JsonObject jsonObject) throws IOException {
             return readCurrenciesWith(jsonObject.get("supported_codes").getAsJsonArray());
         }
 
-        private List<Currency> readCurrenciesWith(JsonArray jsonArray) {
+        private List<Currency> readCurrenciesWith(JsonArray jsonArray) throws IOException {
             List<Currency> list = new ArrayList<>();
             for (JsonElement item : jsonArray)
                 list.add(readCurrencyWith(item.getAsJsonArray()));
             return list;
         }
 
-        private Currency readCurrencyWith(JsonArray tuple) {
+        private Currency readCurrencyWith(JsonArray tuple) throws IOException {
             return new Currency(
                     tuple.get(0).getAsString(),
-                    tuple.get(1).getAsString()
+                    tuple.get(1).getAsString(),
+                    getCurrencyImage(tuple.get(0).getAsString())
             );
+        }
+
+        private String getCurrencyImage(String code) throws IOException {
+            if (code == null || code.length() < 2) return "";
+            return FlagsUrl + code.substring(0, 2).toLowerCase() + ".png";
         }
 
         private static String jsonIn(InputStream is) throws IOException {
