@@ -154,7 +154,6 @@ jobs:
                     "--description", "Currency converter application",
                     "--win-menu",
                     "--win-shortcut",
-                    "--win-console",
                     "--dest", "installers"
                   )
 
