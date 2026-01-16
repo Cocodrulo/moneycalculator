@@ -226,12 +226,6 @@ Contributions are welcome! Here's how you can help:
 
 ---
 
-## 📊 Project Statistics
-
-![Alt](https://repobeats.axiom.co/api/embed/REPO_ID.svg "Repobeats analytics image")
-
----
-
 ## 📄 License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
