@@ -201,16 +201,6 @@ jobs:
                   VERSION="${{ needs.check-version.outputs.version }}"
                   VERSION="${VERSION#v}"
 
-                  # Base arguments
-                  COMMON_ARGS="--input target \
-                    --name MoneyCalculator \
-                    --main-jar $(basename $JAR_FILE) \
-                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
-                    --app-version $VERSION \
-                    --vendor Cocodrulo \
-                    --description 'Currency converter application' \
-                    --dest installers"
-
                   # Add icon if exists
                   if [ -f "src/main/resources/icon.icns" ]; then
                     ICON_ARG="--icon src/main/resources/icon.icns"
@@ -219,10 +209,30 @@ jobs:
                   fi
 
                   # Create DMG installer
-                  jpackage $COMMON_ARGS $ICON_ARG --type dmg
+                  jpackage \
+                    --input target \
+                    --name MoneyCalculator \
+                    --main-jar $(basename $JAR_FILE) \
+                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
+                    --type dmg \
+                    --app-version "$VERSION" \
+                    --vendor "Cocodrulo" \
+                    --description "Currency converter application" \
+                    --dest installers \
+                    $ICON_ARG
 
                   # Create PKG installer
-                  jpackage $COMMON_ARGS $ICON_ARG --type pkg
+                  jpackage \
+                    --input target \
+                    --name MoneyCalculator \
+                    --main-jar $(basename $JAR_FILE) \
+                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
+                    --type pkg \
+                    --app-version "$VERSION" \
+                    --vendor "Cocodrulo" \
+                    --description "Currency converter application" \
+                    --dest installers \
+                    $ICON_ARG
 
             - name: Upload macOS installers
               uses: actions/upload-artifact@v4
@@ -255,16 +265,6 @@ jobs:
                   VERSION="${{ needs.check-version.outputs.version }}"
                   VERSION="${VERSION#v}"
 
-                  # Base arguments
-                  COMMON_ARGS="--input target \
-                    --name moneycalculator \
-                    --main-jar $(basename $JAR_FILE) \
-                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
-                    --app-version $VERSION \
-                    --vendor Cocodrulo \
-                    --description 'Currency converter application' \
-                    --dest installers"
-
                   # Add icon if exists
                   if [ -f "src/main/resources/icon.png" ]; then
                     ICON_ARG="--icon src/main/resources/icon.png"
@@ -273,10 +273,30 @@ jobs:
                   fi
 
                   # Create DEB package
-                  jpackage $COMMON_ARGS $ICON_ARG --type deb
+                  jpackage \
+                    --input target \
+                    --name moneycalculator \
+                    --main-jar $(basename $JAR_FILE) \
+                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
+                    --type deb \
+                    --app-version "$VERSION" \
+                    --vendor "Cocodrulo" \
+                    --description "Currency converter application" \
+                    --dest installers \
+                    $ICON_ARG
 
                   # Create RPM package
-                  jpackage $COMMON_ARGS $ICON_ARG --type rpm
+                  jpackage \
+                    --input target \
+                    --name moneycalculator \
+                    --main-jar $(basename $JAR_FILE) \
+                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
+                    --type rpm \
+                    --app-version "$VERSION" \
+                    --vendor "Cocodrulo" \
+                    --description "Currency converter application" \
+                    --dest installers \
+                    $ICON_ARG
 
             - name: Upload Linux installers
               uses: actions/upload-artifact@v4
