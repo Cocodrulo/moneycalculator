@@ -13,13 +13,58 @@ jobs:
             should_release: ${{ steps.check.outputs.should_release }}
             version: ${{ steps.extract.outputs.version }}
         steps:
-            - name: Check commit message
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 2 # Need at least 2 commits to compare
+
+            - name: Check if pom.xml was modified
+              id: check_pom
+              run: |
+                  # Check if pom.xml was modified in this commit
+                  if git diff --name-only HEAD^ HEAD | grep -q "pom.xml"; then
+                    echo "pom_modified=true" >> $GITHUB_OUTPUT
+                    echo "✅ pom.xml was modified in this commit"
+                  else
+                    echo "pom_modified=false" >> $GITHUB_OUTPUT
+                    echo "ℹ️ pom.xml was not modified"
+                  fi
+
+            - name: Extract current version from pom.xml
+              id: current_version
+              if: steps.check_pom.outputs.pom_modified == 'true'
+              run: |
+                  CURRENT_VERSION=$(grep -oP '(?<=<version>)[^<]+' pom.xml | head -1)
+                  echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+                  echo "Current version in pom.xml: $CURRENT_VERSION"
+
+            - name: Extract previous version from pom.xml
+              id: previous_version
+              if: steps.check_pom.outputs.pom_modified == 'true'
+              run: |
+                  git checkout HEAD^ -- pom.xml 2>/dev/null || echo "No previous version"
+                  PREVIOUS_VERSION=$(grep -oP '(?<=<version>)[^<]+' pom.xml | head -1 || echo "none")
+                  git checkout HEAD -- pom.xml  # Restore current pom.xml
+                  echo "previous=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
+                  echo "Previous version in pom.xml: $PREVIOUS_VERSION"
+
+            - name: Check if version changed
               id: check
               run: |
+                  POM_MODIFIED="${{ steps.check_pom.outputs.pom_modified }}"
+                  CURRENT="${{ steps.current_version.outputs.current }}"
+                  PREVIOUS="${{ steps.previous_version.outputs.previous }}"
                   COMMIT_MSG="${{ github.event.head_commit.message }}"
-                  if [[ "$COMMIT_MSG" =~ nVersion$ ]]; then
+
+                  # Check if commit message contains "nVersion" OR version changed in pom.xml
+                  if [[ "$COMMIT_MSG" =~ nVersion ]]; then
+                    echo "✅ Commit message contains 'nVersion'"
+                    echo "should_release=true" >> $GITHUB_OUTPUT
+                  elif [[ "$POM_MODIFIED" == "true" && "$CURRENT" != "$PREVIOUS" && -n "$CURRENT" ]]; then
+                    echo "✅ Version changed in pom.xml: $PREVIOUS → $CURRENT"
                     echo "should_release=true" >> $GITHUB_OUTPUT
                   else
+                    echo "ℹ️ No release trigger detected"
                     echo "should_release=false" >> $GITHUB_OUTPUT
                   fi
 
@@ -27,42 +72,30 @@ jobs:
               id: extract
               if: steps.check.outputs.should_release == 'true'
               run: |
-                  COMMIT_MSG="${{ github.event.head_commit.message }}"
-                  # Extract version number (looks for vX.Y.Z or X.Y.Z pattern)
-                  VERSION=$(echo "$COMMIT_MSG" | grep -oP 'v?\d+\.\d+\.\d+' | head -1)
-                  if [ -z "$VERSION" ]; then
-                    # If no version found, use timestamp
-                    VERSION="v$(date +%Y.%m.%d-%H%M%S)"
+                  # Use version from pom.xml if available
+                  if [ -n "${{ steps.current_version.outputs.current }}" ]; then
+                    VERSION="${{ steps.current_version.outputs.current }}"
+                  else
+                    # Fallback to extracting from commit message
+                    COMMIT_MSG="${{ github.event.head_commit.message }}"
+                    VERSION=$(echo "$COMMIT_MSG" | grep -oP 'v?\d+\.\d+(\.\d+)?' | head -1)
+                    if [ -z "$VERSION" ]; then
+                      VERSION="$(date +%Y.%m.%d-%H%M%S)"
+                    fi
                   fi
                   # Ensure version starts with 'v'
                   [[ "$VERSION" =~ ^v ]] || VERSION="v$VERSION"
                   echo "version=$VERSION" >> $GITHUB_OUTPUT
-                  echo "Extracted version: $VERSION"
+                  echo "🏷️ Release version: $VERSION"
 
-    build:
+    build-jar:
         needs: check-version
         if: needs.check-version.outputs.should_release == 'true'
-        strategy:
-            matrix:
-                os: [ubuntu-latest, windows-latest, macos-latest]
-                include:
-                    - os: ubuntu-latest
-                      platform: linux
-                      artifact_name: moneycalculator-linux.jar
-                    - os: windows-latest
-                      platform: windows
-                      artifact_name: moneycalculator-windows.jar
-                    - os: macos-latest
-                      platform: macos
-                      artifact_name: moneycalculator-macos.jar
-
-        runs-on: ${{ matrix.os }}
+        runs-on: ubuntu-latest
 
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0 # Fetch all history for release notes
 
             - name: Set up JDK 21
               uses: actions/setup-java@v4
@@ -74,20 +107,187 @@ jobs:
             - name: Build with Maven
               run: mvn clean package -DskipTests
 
-            - name: Rename artifact
-              shell: bash
+            - name: Rename universal JAR
               run: |
                   mkdir -p artifacts
-                  cp target/moneycalculator-*-jar-with-dependencies.jar artifacts/${{ matrix.artifact_name }}
+                  cp target/moneycalculator-*-jar-with-dependencies.jar artifacts/moneycalculator.jar
 
-            - name: Upload artifact
+            - name: Upload universal JAR
               uses: actions/upload-artifact@v4
               with:
-                  name: ${{ matrix.platform }}-build
-                  path: artifacts/${{ matrix.artifact_name }}
+                  name: universal-jar
+                  path: artifacts/moneycalculator.jar
+
+    build-windows:
+        needs: check-version
+        if: needs.check-version.outputs.should_release == 'true'
+        runs-on: windows-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up JDK 21
+              uses: actions/setup-java@v4
+              with:
+                  java-version: "21"
+                  distribution: "temurin"
+                  cache: maven
+
+            - name: Build with Maven
+              run: mvn clean package -DskipTests
+
+            - name: Create Windows installers with jpackage
+              shell: pwsh
+              run: |
+                  $jarFile = Get-ChildItem -Path target -Filter "*-jar-with-dependencies.jar" | Select-Object -First 1
+                  $version = "${{ needs.check-version.outputs.version }}".TrimStart('v')
+
+                  # Create EXE installer
+                  jpackage `
+                    --input target `
+                    --name MoneyCalculator `
+                    --main-jar $jarFile.Name `
+                    --main-class software.ulpgc.moneycalculator.application.queen.Main `
+                    --type exe `
+                    --app-version $version `
+                    --vendor "Cocodrulo" `
+                    --description "Currency converter application" `
+                    --win-console `
+                    --dest installers
+
+                  # Create MSI installer
+                  jpackage `
+                    --input target `
+                    --name MoneyCalculator `
+                    --main-jar $jarFile.Name `
+                    --main-class software.ulpgc.moneycalculator.application.queen.Main `
+                    --type msi `
+                    --app-version $version `
+                    --vendor "Cocodrulo" `
+                    --description "Currency converter application" `
+                    --win-console `
+                    --dest installers
+
+            - name: Upload Windows installers
+              uses: actions/upload-artifact@v4
+              with:
+                  name: windows-installers
+                  path: installers/*
+
+    build-macos:
+        needs: check-version
+        if: needs.check-version.outputs.should_release == 'true'
+        runs-on: macos-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up JDK 21
+              uses: actions/setup-java@v4
+              with:
+                  java-version: "21"
+                  distribution: "temurin"
+                  cache: maven
+
+            - name: Build with Maven
+              run: mvn clean package -DskipTests
+
+            - name: Create macOS installers with jpackage
+              run: |
+                  JAR_FILE=$(find target -name "*-jar-with-dependencies.jar" | head -1)
+                  VERSION="${{ needs.check-version.outputs.version }}"
+                  VERSION="${VERSION#v}"
+
+                  # Create DMG installer
+                  jpackage \
+                    --input target \
+                    --name MoneyCalculator \
+                    --main-jar $(basename $JAR_FILE) \
+                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
+                    --type dmg \
+                    --app-version $VERSION \
+                    --vendor "Cocodrulo" \
+                    --description "Currency converter application" \
+                    --dest installers
+
+                  # Create PKG installer
+                  jpackage \
+                    --input target \
+                    --name MoneyCalculator \
+                    --main-jar $(basename $JAR_FILE) \
+                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
+                    --type pkg \
+                    --app-version $VERSION \
+                    --vendor "Cocodrulo" \
+                    --description "Currency converter application" \
+                    --dest installers
+
+            - name: Upload macOS installers
+              uses: actions/upload-artifact@v4
+              with:
+                  name: macos-installers
+                  path: installers/*
+
+    build-linux:
+        needs: check-version
+        if: needs.check-version.outputs.should_release == 'true'
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up JDK 21
+              uses: actions/setup-java@v4
+              with:
+                  java-version: "21"
+                  distribution: "temurin"
+                  cache: maven
+
+            - name: Build with Maven
+              run: mvn clean package -DskipTests
+
+            - name: Create Linux installers with jpackage
+              run: |
+                  JAR_FILE=$(find target -name "*-jar-with-dependencies.jar" | head -1)
+                  VERSION="${{ needs.check-version.outputs.version }}"
+                  VERSION="${VERSION#v}"
+
+                  # Create DEB package
+                  jpackage \
+                    --input target \
+                    --name moneycalculator \
+                    --main-jar $(basename $JAR_FILE) \
+                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
+                    --type deb \
+                    --app-version $VERSION \
+                    --vendor "Cocodrulo" \
+                    --description "Currency converter application" \
+                    --dest installers
+
+                  # Create RPM package
+                  jpackage \
+                    --input target \
+                    --name moneycalculator \
+                    --main-jar $(basename $JAR_FILE) \
+                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
+                    --type rpm \
+                    --app-version $VERSION \
+                    --vendor "Cocodrulo" \
+                    --description "Currency converter application" \
+                    --dest installers
+
+            - name: Upload Linux installers
+              uses: actions/upload-artifact@v4
+              with:
+                  name: linux-installers
+                  path: installers/*
 
     create-release:
-        needs: [check-version, build]
+        needs:
+            [check-version, build-jar, build-windows, build-macos, build-linux]
         runs-on: ubuntu-latest
         permissions:
             contents: write
@@ -102,6 +302,11 @@ jobs:
               uses: actions/download-artifact@v4
               with:
                   path: release-artifacts
+
+            - name: List downloaded artifacts
+              run: |
+                  echo "📦 Downloaded artifacts:"
+                  find release-artifacts -type f
 
             - name: Generate release notes
               id: release_notes
@@ -125,17 +330,32 @@ jobs:
 
                   echo "" >> RELEASE_NOTES.md
                   echo "" >> RELEASE_NOTES.md
-                  echo "## 📦 Assets" >> RELEASE_NOTES.md
+                  echo "## 📦 Downloads" >> RELEASE_NOTES.md
                   echo "" >> RELEASE_NOTES.md
-                  echo "Download the JAR file for your platform:" >> RELEASE_NOTES.md
-                  echo "- **Linux**: \`moneycalculator-linux.jar\`" >> RELEASE_NOTES.md
-                  echo "- **Windows**: \`moneycalculator-windows.jar\`" >> RELEASE_NOTES.md
-                  echo "- **macOS**: \`moneycalculator-macos.jar\`" >> RELEASE_NOTES.md
+                  echo "### Universal JAR (All Platforms)" >> RELEASE_NOTES.md
+                  echo "- **\`moneycalculator.jar\`** - Requires Java 21+" >> RELEASE_NOTES.md
                   echo "" >> RELEASE_NOTES.md
-                  echo "### 🚀 How to Run" >> RELEASE_NOTES.md
+                  echo "### Windows" >> RELEASE_NOTES.md
+                  echo "- **\`.exe\`** - Windows installer" >> RELEASE_NOTES.md
+                  echo "- **\`.msi\`** - Windows MSI package" >> RELEASE_NOTES.md
+                  echo "" >> RELEASE_NOTES.md
+                  echo "### macOS" >> RELEASE_NOTES.md
+                  echo "- **\`.dmg\`** - macOS disk image" >> RELEASE_NOTES.md
+                  echo "- **\`.pkg\`** - macOS package installer" >> RELEASE_NOTES.md
+                  echo "" >> RELEASE_NOTES.md
+                  echo "### Linux" >> RELEASE_NOTES.md
+                  echo "- **\`.deb\`** - Debian/Ubuntu package" >> RELEASE_NOTES.md
+                  echo "- **\`.rpm\`** - Fedora/RHEL package" >> RELEASE_NOTES.md
+                  echo "" >> RELEASE_NOTES.md
+                  echo "## 🚀 How to Run" >> RELEASE_NOTES.md
+                  echo "" >> RELEASE_NOTES.md
+                  echo "### Universal JAR" >> RELEASE_NOTES.md
                   echo "\`\`\`bash" >> RELEASE_NOTES.md
-                  echo "java -jar moneycalculator-<platform>.jar" >> RELEASE_NOTES.md
+                  echo "java -jar moneycalculator.jar" >> RELEASE_NOTES.md
                   echo "\`\`\`" >> RELEASE_NOTES.md
+                  echo "" >> RELEASE_NOTES.md
+                  echo "### Platform Installers" >> RELEASE_NOTES.md
+                  echo "Download and run the installer for your platform. No Java installation required!" >> RELEASE_NOTES.md
 
                   cat RELEASE_NOTES.md
 
@@ -148,8 +368,9 @@ jobs:
                   draft: false
                   prerelease: false
                   files: |
-                      release-artifacts/linux-build/moneycalculator-linux.jar
-                      release-artifacts/windows-build/moneycalculator-windows.jar
-                      release-artifacts/macos-build/moneycalculator-macos.jar
+                      release-artifacts/universal-jar/moneycalculator.jar
+                      release-artifacts/windows-installers/*
+                      release-artifacts/macos-installers/*
+                      release-artifacts/linux-installers/*
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
