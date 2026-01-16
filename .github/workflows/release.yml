@@ -143,31 +143,32 @@ jobs:
                   $jarFile = Get-ChildItem -Path target -Filter "*-jar-with-dependencies.jar" | Select-Object -First 1
                   $version = "${{ needs.check-version.outputs.version }}".TrimStart('v')
 
+                  # Common jpackage arguments
+                  $commonArgs = @(
+                    "--input", "target",
+                    "--name", "MoneyCalculator",
+                    "--main-jar", $jarFile.Name,
+                    "--main-class", "software.ulpgc.moneycalculator.application.queen.Main",
+                    "--app-version", $version,
+                    "--vendor", "Cocodrulo",
+                    "--description", "Currency converter application",
+                    "--win-menu",
+                    "--win-shortcut",
+                    "--win-console",
+                    "--dest", "installers"
+                  )
+
+                  # Add icon if exists
+                  if (Test-Path "src/main/resources/icon.ico") {
+                    $commonArgs += "--icon"
+                    $commonArgs += "src/main/resources/icon.ico"
+                  }
+
                   # Create EXE installer
-                  jpackage `
-                    --input target `
-                    --name MoneyCalculator `
-                    --main-jar $jarFile.Name `
-                    --main-class software.ulpgc.moneycalculator.application.queen.Main `
-                    --type exe `
-                    --app-version $version `
-                    --vendor "Cocodrulo" `
-                    --description "Currency converter application" `
-                    --win-console `
-                    --dest installers
+                  jpackage @commonArgs --type exe
 
                   # Create MSI installer
-                  jpackage `
-                    --input target `
-                    --name MoneyCalculator `
-                    --main-jar $jarFile.Name `
-                    --main-class software.ulpgc.moneycalculator.application.queen.Main `
-                    --type msi `
-                    --app-version $version `
-                    --vendor "Cocodrulo" `
-                    --description "Currency converter application" `
-                    --win-console `
-                    --dest installers
+                  jpackage @commonArgs --type msi
 
             - name: Upload Windows installers
               uses: actions/upload-artifact@v4
@@ -200,29 +201,28 @@ jobs:
                   VERSION="${{ needs.check-version.outputs.version }}"
                   VERSION="${VERSION#v}"
 
-                  # Create DMG installer
-                  jpackage \
-                    --input target \
+                  # Base arguments
+                  COMMON_ARGS="--input target \
                     --name MoneyCalculator \
                     --main-jar $(basename $JAR_FILE) \
                     --main-class software.ulpgc.moneycalculator.application.queen.Main \
-                    --type dmg \
                     --app-version $VERSION \
-                    --vendor "Cocodrulo" \
-                    --description "Currency converter application" \
-                    --dest installers
+                    --vendor Cocodrulo \
+                    --description 'Currency converter application' \
+                    --dest installers"
+
+                  # Add icon if exists
+                  if [ -f "src/main/resources/icon.icns" ]; then
+                    ICON_ARG="--icon src/main/resources/icon.icns"
+                  else
+                    ICON_ARG=""
+                  fi
+
+                  # Create DMG installer
+                  jpackage $COMMON_ARGS $ICON_ARG --type dmg
 
                   # Create PKG installer
-                  jpackage \
-                    --input target \
-                    --name MoneyCalculator \
-                    --main-jar $(basename $JAR_FILE) \
-                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
-                    --type pkg \
-                    --app-version $VERSION \
-                    --vendor "Cocodrulo" \
-                    --description "Currency converter application" \
-                    --dest installers
+                  jpackage $COMMON_ARGS $ICON_ARG --type pkg
 
             - name: Upload macOS installers
               uses: actions/upload-artifact@v4
@@ -255,29 +255,28 @@ jobs:
                   VERSION="${{ needs.check-version.outputs.version }}"
                   VERSION="${VERSION#v}"
 
-                  # Create DEB package
-                  jpackage \
-                    --input target \
+                  # Base arguments
+                  COMMON_ARGS="--input target \
                     --name moneycalculator \
                     --main-jar $(basename $JAR_FILE) \
                     --main-class software.ulpgc.moneycalculator.application.queen.Main \
-                    --type deb \
                     --app-version $VERSION \
-                    --vendor "Cocodrulo" \
-                    --description "Currency converter application" \
-                    --dest installers
+                    --vendor Cocodrulo \
+                    --description 'Currency converter application' \
+                    --dest installers"
+
+                  # Add icon if exists
+                  if [ -f "src/main/resources/icon.png" ]; then
+                    ICON_ARG="--icon src/main/resources/icon.png"
+                  else
+                    ICON_ARG=""
+                  fi
+
+                  # Create DEB package
+                  jpackage $COMMON_ARGS $ICON_ARG --type deb
 
                   # Create RPM package
-                  jpackage \
-                    --input target \
-                    --name moneycalculator \
-                    --main-jar $(basename $JAR_FILE) \
-                    --main-class software.ulpgc.moneycalculator.application.queen.Main \
-                    --type rpm \
-                    --app-version $VERSION \
-                    --vendor "Cocodrulo" \
-                    --description "Currency converter application" \
-                    --dest installers
+                  jpackage $COMMON_ARGS $ICON_ARG --type rpm
 
             - name: Upload Linux installers
               uses: actions/upload-artifact@v4
@@ -336,8 +335,8 @@ jobs:
                   echo "- **\`moneycalculator.jar\`** - Requires Java 21+" >> RELEASE_NOTES.md
                   echo "" >> RELEASE_NOTES.md
                   echo "### Windows" >> RELEASE_NOTES.md
-                  echo "- **\`.exe\`** - Windows installer" >> RELEASE_NOTES.md
-                  echo "- **\`.msi\`** - Windows MSI package" >> RELEASE_NOTES.md
+                  echo "- **\`.exe\`** - Windows installer (adds to Start Menu + Desktop shortcut)" >> RELEASE_NOTES.md
+                  echo "- **\`.msi\`** - Windows MSI package (adds to Start Menu + Desktop shortcut)" >> RELEASE_NOTES.md
                   echo "" >> RELEASE_NOTES.md
                   echo "### macOS" >> RELEASE_NOTES.md
                   echo "- **\`.dmg\`** - macOS disk image" >> RELEASE_NOTES.md
